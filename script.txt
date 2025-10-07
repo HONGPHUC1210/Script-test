@@ -1,0 +1,150 @@
+Option Explicit
+
+'--- QuickSort mang Long tang dan ---
+Private Sub QuickSortLong(arr() As Long, ByVal lo As Long, ByVal hi As Long)
+    Dim i As Long, j As Long, p As Long, t As Long
+    i = lo: j = hi: p = arr((lo + hi) \ 2)
+    Do While i <= j
+        Do While arr(i) < p: i = i + 1: Loop
+        Do While arr(j) > p: j = j - 1: Loop
+        If i <= j Then
+            t = arr(i): arr(i) = arr(j): arr(j) = t
+            i = i + 1: j = j - 1
+        End If
+    Loop
+    If lo < j Then QuickSortLong arr, lo, j
+    If i < hi Then QuickSortLong arr, i, hi
+End Sub
+
+'--- Tim chi so key <= target trong mang keys sap xep ---
+Private Function FindLEKey(keys() As Long, ByVal target As Long) As Long
+    Dim lo As Long, hi As Long, mid As Long, ans As Long
+    lo = LBound(keys): hi = UBound(keys): ans = -1
+    Do While lo <= hi
+        mid = (lo + hi) \ 2
+        If keys(mid) <= target Then
+            ans = mid
+            lo = mid + 1
+        Else
+            hi = mid - 1
+        End If
+    Loop
+    FindLEKey = ans
+End Function
+
+'=== DIEN TOAN BO: doc thang dich TU HANG 4; KHONG ghi gi vao hang 4/5 ===
+Public Sub Fill_All_Projected_Indices_V4()
+    Dim ws As Worksheet, wsParam As Worksheet
+    Set ws = ThisWorkbook.Worksheets("Sheet1")
+    Set wsParam = ThisWorkbook.Worksheets("param")
+    
+    Const FIRST_ROW As Long = 6    ' du lieu bat dau tu dong 6
+    Const START_COL As Long = 4    ' cot D
+    
+    ' Tham so tren sheet param
+    If Len(Trim(wsParam.Range("A56").Value)) = 0 Then
+        MsgBox "param!A56 chua co so trimestre (vi du 40).", vbExclamation: Exit Sub
+    End If
+    If Not IsDate(wsParam.Range("B4").Value) Then
+        MsgBox "param!B4 khong phai ngay hop le.", vbExclamation: Exit Sub
+    End If
+    Dim finalTris As Long: finalTris = CLng(Val(wsParam.Range("A56").Value)) ' vi du 40
+    Dim endDate As Date:   endDate = wsParam.Range("B4").Value               ' derniere date
+    Dim cutoff As Date:    cutoff = DateSerial(Year(endDate), Month(endDate) + 1, Day(endDate) - 11)
+    
+    Dim N_COLS As Long: N_COLS = finalTris + 1    ' 0..40 => 41 cot
+    
+    ' Dong cuoi cua cot A
+    Dim lastRow As Long: lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    If lastRow < FIRST_ROW Then MsgBox "Khong co du lieu cot A.", vbExclamation: Exit Sub
+    
+    ' Doc thang dich TU HANG 4 (DA CO SAN), KHONG sua
+    Dim mShifts() As Long, c As Long
+    ReDim mShifts(1 To N_COLS)
+    For c = 1 To N_COLS
+        If Not IsNumeric(ws.Cells(4, START_COL + c - 1).Value) Then
+            MsgBox "Gia tri khong hop le tai " & ws.Cells(4, START_COL + c - 1).Address(0, 0) & _
+                   ". Yeu cau so thang (0,3,6,...).", vbExclamation
+            Exit Sub
+        End If
+        mShifts(c) = CLng(ws.Cells(4, START_COL + c - 1).Value)
+    Next c
+    
+    ' Lay du lieu vao mang
+    Dim n As Long: n = lastRow - FIRST_ROW + 1
+    Dim arrDates() As Variant, arrVals() As Variant
+    arrDates = ws.Range(ws.Cells(FIRST_ROW, "A"), ws.Cells(lastRow, "A")).Value
+    arrVals = ws.Range(ws.Cells(FIRST_ROW, "B"), ws.Cells(lastRow, "B")).Value
+    
+    ' Tao dictionary: dateInt -> vi tri cuoi cung
+    Dim dict As Object: Set dict = CreateObject("Scripting.Dictionary")
+    Dim i As Long, dInt As Long
+    For i = 1 To n
+        If IsDate(arrDates(i, 1)) Then
+            dInt = CLng(Int(CDbl(arrDates(i, 1))))
+            dict(dInt) = i
+        End If
+    Next i
+    
+    ' Mang khoa sap xep de tim LE
+    Dim keys() As Long, k As Long, keyVar As Variant
+    ReDim keys(1 To dict.Count)
+    k = 1
+    For Each keyVar In dict.keys
+        keys(k) = CLng(keyVar)
+        k = k + 1
+    Next keyVar
+    If UBound(keys) >= LBound(keys) Then QuickSortLong keys, LBound(keys), UBound(keys)
+    
+    ' Toi uu Excel
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.Calculation = xlCalculationManual
+    
+    ' Tinh va ghi vao mang ket qua
+    Dim outArr() As Variant
+    ReDim outArr(1 To n, 1 To N_COLS)
+    
+    Dim r As Long, j As Long
+    Dim d0 As Date, tFinal As Date, tObs As Date, tInt As Long
+    Dim idxKey As Long, pos As Long
+    
+    For r = 1 To n
+        d0 = arrDates(r, 1)
+        tFinal = DateSerial(Year(d0) + (finalTris \ 4), Month(d0), Day(d0))
+        
+        If tFinal > cutoff Then
+            For j = 1 To N_COLS: outArr(r, j) = "": Next j
+        Else
+            For j = 1 To N_COLS
+                tObs = DateAdd("m", mShifts(j), d0)        ' EDATE(Ai, m)
+                tInt = CLng(Int(CDbl(tObs)))
+                
+                If dict.Exists(tInt) Then
+                    pos = dict(tInt)
+                    outArr(r, j) = arrVals(pos, 1)
+                Else
+                    idxKey = FindLEKey(keys, tInt)         ' ngay lon nhat <= tObs
+                    If idxKey <> -1 Then
+                        pos = dict(keys(idxKey))
+                        outArr(r, j) = arrVals(pos, 1)
+                    Else
+                        outArr(r, j) = ""
+                    End If
+                End If
+            Next j
+        End If
+    Next r
+    
+    ' Ghi ra D6 .. D+40
+    ws.Range(ws.Cells(FIRST_ROW, START_COL), ws.Cells(lastRow, START_COL + N_COLS - 1)).Value = outArr
+    
+    ' Tra lai che do
+    Application.Calculation = xlCalculationAutomatic
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    
+    MsgBox "Da dien xong " & n & " dong x " & N_COLS & " cot.", vbInformation
+End Sub
+
+
